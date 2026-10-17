@@ -374,3 +374,4 @@ uvicorn app.main:app --reload
 12. **This platform is an analytics/intelligence tool only.** It does not
     execute trades and makes no promise of investment success, per the
     original spec.
+<img width="1918" height="950" alt="image" src="https://github.com/user-attachments/assets/6a9e0b3a-1a1a-43a9-b102-6ecb09641352" />
