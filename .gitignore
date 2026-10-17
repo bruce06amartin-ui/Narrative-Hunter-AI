@@ -1,0 +1,27 @@
+# env
+.env
+.env.local
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# node
+node_modules/
+.next/
+npm-debug.log*
+
+# misc
+.DS_Store
+
+# extra safety
+.env.*
+!.env.example
+!frontend/.env.local.example
+*.log
+.pytest_cache/
+.idea/
+.vscode/
+pgdata/
+*.zip

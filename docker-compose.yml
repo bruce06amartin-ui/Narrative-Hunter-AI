@@ -1,0 +1,105 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nha_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nha}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a real POSTGRES_PASSWORD in .env for cloud deployment - do not use a default}
+      POSTGRES_DB: ${POSTGRES_DB:-narrative_hunter}
+    # No "ports:" here on purpose - a cloud VPS has a real public IP, so
+    # publishing 5432 would mean your database is directly reachable from
+    # the internet. The api/worker/beat containers already reach it via
+    # Docker's internal network using the hostname "postgres", and
+    # `docker compose exec postgres psql ...` still works fine for
+    # diagnostics regardless - this was never actually needed for anything
+    # we did throughout this whole project.
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nha} -d ${POSTGRES_DB:-narrative_hunter}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: nha_redis
+    restart: unless-stopped
+    # Same reasoning as postgres above - no public port. Redis has no
+    # authentication by default, so leaving 6379 published on a real
+    # public IP would let anyone on the internet read/write your task
+    # queue and locks directly.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    container_name: nha_api
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  worker:
+    build:
+      context: ./backend
+    container_name: nha_worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: celery -A app.workers.celery_app worker --loglevel=info
+
+  beat:
+    build:
+      context: ./backend
+    container_name: nha_beat
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: celery -A app.workers.celery_app beat --loglevel=info
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: nha_frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      INTERNAL_API_URL: http://api:8000
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
+volumes:
+  pg_data:
